@@ -1034,6 +1034,9 @@ class BertForQuestionAnswering(PreTrainedBertModel):
         else:
             return start_logits, end_logits
     
+
+import pdb
+
 class BertForCloth(PreTrainedBertModel):
 
     def __init__(self, config):
@@ -1054,6 +1057,7 @@ class BertForCloth(PreTrainedBertModel):
         option -> bsz X opnum X 4 X olen
         output: bsz X opnum 
         '''
+        # pdb.set_trace()
         articles, articles_mask, ops, ops_mask, question_pos, mask, high_mask = inp 
         
         bsz = ops.size(0)

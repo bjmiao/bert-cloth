@@ -131,7 +131,7 @@ class Preprocessor(object):
                 return [first_sample]
             else:
                 return [first_sample, second_sample]
-
+import pdb
 class Loader(Dataset):
     def __init__(self, data_dir, data_file, cache_size, batch_size, device='cpu'):
         #self.tokenizer = BertTokenizer.from_pretrained(args.bert_model)
@@ -147,11 +147,14 @@ class Loader(Dataset):
         return self.data_num
 
     def __getitem__(self, item):
+        # print(self._data_iter)
+        # print(next(self._data_iter))
+        # pdb.set_trace()
         seqlen = torch.zeros(self.data_num)
         for i in range(self.data_num):
             seqlen[i] = self.data[i].article.size(0)
         _, indices = torch.sort(seqlen, descending=True)
-        #inp, tgt = self._batchify(self.data, indices)
+        # inp, tgt = self._batchify(self.data, indices)
         #print(inp)
         #shape = tgt.size()
         #print(shape[0])
@@ -161,9 +164,35 @@ class Loader(Dataset):
         for i in range(7):
             inp.append(inp1[i][item])
         tgt = tgt1[item]
+        pdb.set_trace()
         return inp, tgt
-        
+        # return next(self._data_iter)
 
+    def init_data_iter(self):
+        self._data_iter = self.data_iter()
+                
+    def data_iter(self, shuffle=True):
+        if (shuffle == True):
+            random.shuffle(self.data)
+        seqlen = torch.zeros(self.data_num)
+        for i in range(self.data_num):
+            seqlen[i] = self.data[i].article.size(0)
+        cache_start = 0
+        while (cache_start < self.data_num):
+            cache_end = min(cache_start + self.cache_size, self.data_num)
+            cache_data = self.data[cache_start:cache_end]
+            seql = seqlen[cache_start:cache_end]
+            _, indices = torch.sort(seql, descending=True)
+            batch_start = 0
+            while (batch_start + cache_start < cache_end):
+                batch_end = min(batch_start + self.batch_size, cache_end - cache_start)
+                data_batch = indices[batch_start:batch_end]
+                inp, tgt = self._batchify(cache_data, data_batch)
+                inp = to_device(inp, self.device)
+                tgt = to_device(tgt, self.device)
+                yield inp, tgt
+                batch_start += self.batch_size
+            cache_start += self.cache_size
     
     def _batchify(self, data_set, data_batch):
         max_article_length = 0
@@ -202,31 +231,7 @@ class Loader(Dataset):
         inp = [articles, articles_mask, options, options_mask, question_pos, mask, high_mask]
         tgt = answers
         return inp, tgt
-                
-                
-    def data_iter(self, shuffle=True):
-        if (shuffle == True):
-            random.shuffle(self.data)
-        seqlen = torch.zeros(self.data_num)
-        for i in range(self.data_num):
-            seqlen[i] = self.data[i].article.size(0)
-        cache_start = 0
-        while (cache_start < self.data_num):
-            cache_end = min(cache_start + self.cache_size, self.data_num)
-            cache_data = self.data[cache_start:cache_end]
-            seql = seqlen[cache_start:cache_end]
-            _, indices = torch.sort(seql, descending=True)
-            batch_start = 0
-            while (batch_start + cache_start < cache_end):
-                batch_end = min(batch_start + self.batch_size, cache_end - cache_start)
-                data_batch = indices[batch_start:batch_end]
-                inp, tgt = self._batchify(cache_data, data_batch)
-                inp = to_device(inp, self.device)
-                tgt = to_device(tgt, self.device)
-                yield inp, tgt
-                batch_start += self.batch_size
-            cache_start += self.cache_size
-                
+                                
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='bert cloth')
     args = parser.parse_args()

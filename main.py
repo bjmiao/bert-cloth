@@ -175,22 +175,26 @@ def main():
     if args.do_train:
         train_data = data_util.Loader(args.data_dir, data_file['train'], args.cache_size, args.train_batch_size, device)
         #print(train_data)
-        train_sampler = torch.utils.data.distributed.DistributedSampler(train_data, num_replicas=args.world_size, rank=args.rank)
+        train_data.init_data_iter()
+        train_sampler = torch.utils.data.distributed.DistributedSampler(train_data)#, num_replicas=args.world_size, rank=args.rank)
+        # train_sampler = torch.utils.data.distributed.DistributedSampler(train_data, num_replicas=args.world_size, rank=args.rank)
         
-        data_loader = DataLoader(train_data, batch_size=args.train_batch_size, shuffle=(train_sampler is None), sampler=train_sampler)
-        print(data_loader)
+        data_loader = DataLoader(train_data, batch_size=args.train_batch_size, 
+                            shuffle=(train_sampler is None), sampler=train_sampler)
+        # print(data_loader)
         num_train_steps = int(
             train_data.data_num / args.train_batch_size / args.gradient_accumulation_steps * args.num_train_epochs)
 
     # Prepare model
-    model = BertForCloth.from_pretrained("../bert-large-uncased",
+    model = BertForCloth.from_pretrained("../../bert-large-uncased",
               cache_dir=PYTORCH_PRETRAINED_BERT_CACHE / 'distributed_{}'.format(args.local_rank))
     if args.fp16:
         model.half()
     model.to(device)
     if args.local_rank != -1:
-        model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[0,1],
-                                                          output_device=args.local_rank)
+        model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[0],
+                                                          output_device=args.local_rank, 
+                                                          find_unused_parameters = True)
     elif n_gpu > 1:
         model = torch.nn.DataParallel(model)
         #logging("sucess")
@@ -222,14 +226,15 @@ def main():
         logging("***** Running training *****")
         logging("  Batch size = {}".format(args.train_batch_size))
         logging("  Num steps = {}".format(num_train_steps))
-
         model.train()
         for _ in range(int(args.num_train_epochs)):
             tr_loss = 0
             tr_acc = 0
             nb_tr_examples, nb_tr_steps = 0, 0
-            for inp, tgt in enumerate(data_loader):
+            for i, (inp, tgt) in enumerate(data_loader):
+                print(1)
                 loss, acc, _, _ = model(inp, tgt)
+                print(2)
                 if n_gpu > 1:
                     loss = loss.mean() # mean() to average on multi-gpu.
                     acc = acc.sum()
@@ -240,6 +245,7 @@ def main():
                 if args.gradient_accumulation_steps > 1:
                     loss = loss / args.gradient_accumulation_steps
                 loss.backward()
+                print(3)
                 tr_loss += loss.item()
                 tr_acc += acc.item()
                 #print(tr_acc)
@@ -262,6 +268,7 @@ def main():
                         copy_optimizer_params_to_model(model.named_parameters(), param_optimizer)
                     else:
                         optimizer.step()
+                    print(4)
                     model.zero_grad()
                     global_step += 1
                 if (global_step % args.num_log_steps == 0):
